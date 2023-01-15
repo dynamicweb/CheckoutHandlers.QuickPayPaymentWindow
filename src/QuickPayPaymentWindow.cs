@@ -423,7 +423,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 var user = User.GetCurrentUser(PagePermissionLevels.Frontend);
                 if (user != null)
                 {
-                    var savedCard = Services.PaymentCard.CreatePaymentCard(user.ID, order.PaymentMethodId, order.LanguageId, storedCardInfo.Item2, cardType, cardNubmer, storedCardInfo.Item1);
+                    var savedCard = Services.PaymentCard.CreatePaymentCard(user.ID, order.PaymentMethodId, storedCardInfo.Item2, cardType, cardNubmer, storedCardInfo.Item1);
                     order.SavedCardId = savedCard.ID;
                     Services.Orders.Save(order);
                     LogEvent(order, "Saved Card created");
@@ -533,9 +533,9 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 {
                     case "Post mode":
                         return new Hashtable{
-                            {"Auto", Translate.Translate("Auto post (does not use the template)")},
-                            {"Template", Translate.Translate("Render template")},
-                            {"Inline", Translate.Translate("Render inline form")}
+                            {"Auto", Translator.Translate("Auto post (does not use the template)")},
+                            {"Template", Translator.Translate("Render template")},
+                            {"Inline", Translator.Translate("Render inline form")}
                                    };
                     case "Card type":
                         return new Hashtable(GetCardTypes(false, true));
@@ -1450,7 +1450,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 cardTypes = cardTypes.Union(acquirers).ToDictionary(x => x.Key, y => y.Value);
             }
 
-            return translate ? cardTypes.ToDictionary(x => x.Key, y => Translate.Translate(y.Value)) : cardTypes;
+            return translate ? cardTypes.ToDictionary(x => x.Key, y => Translator.Translate(y.Value)) : cardTypes;
         }
 
         private string GetMacString(IDictionary<string, string> formValues)
