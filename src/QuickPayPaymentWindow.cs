@@ -533,9 +533,9 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 {
                     case "Post mode":
                         return new Hashtable{
-                            {"Auto", Translator.Translate("Auto post (does not use the template)")},
-                            {"Template", Translator.Translate("Render template")},
-                            {"Inline", Translator.Translate("Render inline form")}
+                            {"Auto", "Auto post (does not use the template)"},
+                            {"Template", "Render template"},
+                            {"Inline", "Render inline form"}
                                    };
                     case "Card type":
                         return new Hashtable(GetCardTypes(false, true));
@@ -1450,7 +1450,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 cardTypes = cardTypes.Union(acquirers).ToDictionary(x => x.Key, y => y.Value);
             }
 
-            return translate ? cardTypes.ToDictionary(x => x.Key, y => Translator.Translate(y.Value)) : cardTypes;
+            return translate ? cardTypes.ToDictionary(x => x.Key, y => y.Value) : cardTypes;
         }
 
         private string GetMacString(IDictionary<string, string> formValues)
