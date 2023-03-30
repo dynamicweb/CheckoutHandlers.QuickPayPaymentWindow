@@ -8,7 +8,6 @@ using Dynamicweb.Extensibility.AddIns;
 using Dynamicweb.Extensibility.Editors;
 using Dynamicweb.Rendering;
 using Dynamicweb.Security.UserManagement;
-using Dynamicweb.SystemTools;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -498,10 +497,10 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 
                 using (StreamReader reader = new StreamReader(Context.Current.Request.InputStream, Encoding.UTF8))
                 {
-                    callbackResponce = reader.ReadToEnd();
+                    callbackResponce = reader.ReadToEndAsync().GetAwaiter().GetResult();
                 }
 
-                CheckDataResult result = CheckData(order, callbackResponce ?? String.Empty, order.Price.PricePIP);
+                CheckDataResult result = CheckData(order, callbackResponce ?? string.Empty, order.Price.PricePIP);
 
                 string resultInfo;
                 switch (result)
@@ -1108,8 +1107,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                     if (doCheckSum)
                     {
                         var calculatedHash = ComputeHash(PrivateKey, responsetext);
-
-                        var callbackCheckSum = Context.Current.Request["HTTP_QUICKPAY_CHECKSUM_SHA256"];
+                        var callbackCheckSum = Context.Current.Request.Headers["QuickPay-Checksum-Sha256"];
 
                         if (!calculatedHash.Equals(callbackCheckSum, StringComparison.CurrentCultureIgnoreCase))
                         {
