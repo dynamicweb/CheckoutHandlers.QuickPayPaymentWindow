@@ -26,4 +26,4 @@ When you have the four keys you can configure the checkout handler:
 
 Go to `Settings > Ecommerce > Orders > Payments` and create a new payment method
 Select the **QuickPay Payment Window** checkout handler
-Fill in the parameters section
+Fill in the parameters section.
