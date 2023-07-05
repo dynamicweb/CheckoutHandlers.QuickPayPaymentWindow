@@ -180,12 +180,15 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
             }
         }
 
-        private static string BaseUrl(Order order)
+        private static string BaseUrl(Order order, bool headless = false)
         {
             var disablePortNumber = Dynamicweb.Configuration.SystemConfiguration.Instance.GetValue("/Globalsettings/System/http/DisableBaseHrefPort") == "True";
             var portString = (Context.Current.Request.Url.IsDefaultPort || disablePortNumber) ? string.Empty : string.Format(":{0}", Context.Current.Request.Url.Port);
             //var portString = string.Empty;
             var pageId = Dynamicweb.Context.Current.Request["ID"] == null ? string.Empty : string.Format("ID={0}&", Dynamicweb.Context.Current.Request["ID"]);
+
+            if (headless)
+                return $"{Context.Current.Request.Url.Scheme}://{Context.Current.Request.Url.Host}{portString}/dwapi/ecommerce/carts/callback?{OrderIdRequestName}={order.Id}";
 
             return string.Format("{2}://{0}{3}/Default.aspx?{1}{5}={4}", Context.Current.Request.Url.Host, pageId, Context.Current.Request.Url.Scheme, portString, order.Id, OrderIdRequestName);
         }
@@ -200,9 +203,9 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
             return string.Format("{0}&QuickPayState=Cancel", BaseUrl(order));
         }
 
-        private static string CallbackUrl(Order order)
+        private static string CallbackUrl(Order order, bool headless = false)
         {
-            return string.Format("{0}&QuickPayState=Callback&redirect=false", BaseUrl(order));
+            return string.Format("{0}&QuickPayState=Callback&redirect=false", BaseUrl(order, headless));
         }
 
         private string GetServiceLink(ApiService service, string operationID = "", string parameters = "")
@@ -252,7 +255,8 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 		///		google_analytics_client_id      /[^d]$/                 Your Google Analytics client ID.
 		///		checksum 	                    /^[a-z0-9]{32}$/ 	    The calculated checksum of your data./ 	
 		/// </remarks>
-        public override string StartCheckout(Order order)
+        public override string StartCheckout(Order order) => StartCheckout(order, false, null, null);
+        public override string StartCheckout(Order order, bool headless, string? receiptUrl, string? cancelUrl)
         {
             try
             {
@@ -269,7 +273,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 }
                 else if (order.DoSaveCardToken || !string.IsNullOrEmpty(cardName) || order.IsRecurringOrderTemplate)
                 {
-                    return CreateCard(cardName, order);
+                    return CreateCard(cardName, order, headless, receiptUrl, cancelUrl);
                 }
                 else
                 {
@@ -282,9 +286,9 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                                          {"language", LanguageCode},
                                          {"amount", order.Price.PricePIP.ToString()},
                                          {"currency", order.Price.Currency.Code},
-                                         {"continueurl", ContinueUrl(order)},
-                                         {"cancelurl", CancelUrl(order)},
-                                         {"callbackurl", CallbackUrl(order)},
+                                         {"continueurl", receiptUrl ?? ContinueUrl(order, false)},
+                                         {"cancelurl", cancelUrl ?? CancelUrl(order)},
+                                         {"callbackurl", CallbackUrl(order, headless)},
                                          {"autocapture", AutoCapture ? "1" : "0"},
                                          {"autofee", AutoFee ? "1" : "0"},
                                          {"payment_methods", PaymentMethods},
@@ -439,7 +443,6 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 {
                     return PrintErrorTemplate(order, "Some error happened on creating payment using saved card", ErrorType.SavedCard);
                 }
-
                 RedirectToCart(order);
                 return null;
             }
@@ -692,7 +695,6 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 {
                     return PrintErrorTemplate(order, "Some error happened on creating payment using saved card", ErrorType.SavedCard);
                 }
-
                 RedirectToCart(order);
                 return string.Empty;
             }
@@ -785,7 +787,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
             return errorTemplate.Output();
         }
 
-        private string CreateCard(string cardName, Order order)
+        private string CreateCard(string cardName, Order order, bool headless, string? receiptUrl, string? cancelUrl)
         {
             string errorMessage = "Error happened during creating QuickPay card";
 
@@ -805,7 +807,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                     Context.Current.Session[cardSessionKey] = new Tuple<string, string>(cardID, cardName);
 
                     string reqbody = string.Format(@"{{""agreement_id"": ""{0}"", ""language"": ""{1}"", ""continueurl"": ""{2}"", ""cancelurl"": ""{3}"", ""callbackurl"": ""{4}"", ""payment_methods"": ""{5}"", ""google_analytics_tracking_id"": ""{6}"", ""google_analytics_client_id"": ""{7}""}}",
-                        Agreement.Trim(), LanguageCode, ContinueUrl(order, true), CancelUrl(order), CallbackUrl(order), PaymentMethods, GoogleAnalyticsTracking, GoogleAnalyticsClient);
+                        Agreement.Trim(), LanguageCode, receiptUrl ?? ContinueUrl(order, true), cancelUrl ?? CancelUrl(order), CallbackUrl(order, headless), PaymentMethods, GoogleAnalyticsTracking, GoogleAnalyticsClient);
                     int brandingId = Converter.ToInt32(Branding);
                     if (brandingId > 0)
                     {
