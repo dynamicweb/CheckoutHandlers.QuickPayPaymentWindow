@@ -31,8 +31,14 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 
         private PostModes postMode = PostModes.Auto;
         private static object lockObject = new object();
+        private string postTemplate;
+        private string cancelTemplate;
+        private string errorTemplate;
         private const string orderCacheKey = "CheckoutHandler:Order.";
         private const string cardSessionKey = "QuickPayPaymentWindow_Card";
+        private const string PostTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Post";
+        private const string CancelTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Cancel";
+        private const string ErrorTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Error";
 
 
         private enum ErrorType { Undefined, SavedCard }
@@ -105,20 +111,41 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets path to template that renders before user will be redirected to Quick Pay service
         /// </summary>
-        [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), "folder=templates/eCom7/CheckoutHandler/QuickPayPaymentWindow/Post")]
-        public string PostTemplate { get; set; }
+        [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=templates/{PostTemplateFolder}")]
+        public string PostTemplate
+        {
+            get
+            {
+                return TemplateHelper.GetTemplateName(postTemplate);
+            }
+            set => postTemplate = value;
+        }
 
         /// <summary>
         /// Gets or sets path to template that renders when user canceled payment on Quick Pay service
         /// </summary>
-        [AddInParameter("Cancel template"), AddInParameterEditor(typeof(TemplateParameterEditor), "folder=templates/eCom7/CheckoutHandler/QuickPayPaymentWindow/Cancel")]
-        public string CancelTemplate { get; set; }
+        [AddInParameter("Cancel template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=templates/{CancelTemplateFolder}")]
+        public string CancelTemplate
+        {
+            get
+            {
+                return TemplateHelper.GetTemplateName(cancelTemplate);
+            }
+            set => cancelTemplate = value;
+        }
 
         /// <summary>
         /// Gets or sets path to template that renders when error happened during Quick Pay service work
         /// </summary>
-        [AddInParameter("Error template"), AddInParameterEditor(typeof(TemplateParameterEditor), "folder=templates/eCom7/CheckoutHandler/QuickPayPaymentWindow/Error")]
-        public string ErrorTemplate { get; set; }
+        [AddInParameter("Error template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=templates/{ErrorTemplateFolder}")]
+        public string ErrorTemplate
+        {
+            get
+            {
+                return TemplateHelper.GetTemplateName(errorTemplate);
+            }
+            set => errorTemplate = value;
+        }
 
         /// <summary>
         /// Gets or sets QuickPay Payment Window Branding ID
@@ -309,7 +336,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                         case PostModes.Template:
                             LogEvent(order, "Render template");
 
-                            var formTemplate = new Template(PostTemplate);
+                            var formTemplate = new Template(TemplateHelper.GetTemplatePath(PostTemplate, PostTemplateFolder));
                             foreach (var formValue in formValues)
                             {
                                 formTemplate.SetTag(string.Format("QuickPayPaymentWindow.{0}", formValue.Key), formValue.Value);
@@ -470,7 +497,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 CheckoutDone(order);
             }
 
-            var cancelTemplate = new Template(CancelTemplate);
+            var cancelTemplate = new Template(TemplateHelper.GetTemplatePath(CancelTemplate, CancelTemplateFolder));
             var orderRenderer = new Ecommerce.Frontend.Renderer();
             orderRenderer.RenderOrderDetails(cancelTemplate, order, true);
 
@@ -779,7 +806,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         private string PrintErrorTemplate(Order order, string errorMessage, ErrorType errorType = ErrorType.Undefined)
         {
             LogEvent(order, "Printing error template");
-            var errorTemplate = new Template(ErrorTemplate);
+            var errorTemplate = new Template(TemplateHelper.GetTemplatePath(ErrorTemplate, ErrorTemplateFolder));
             var orderRenderer = new Ecommerce.Frontend.Renderer();
             errorTemplate.SetTag("CheckoutHandler:ErrorType", errorType.ToString());
             errorTemplate.SetTag("CheckoutHandler:ErrorMessage", errorMessage);
@@ -1607,7 +1634,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
             if (postMode == PostModes.Inline)
             {
                 LogEvent(order, "Render inline form");
-                var formTemplate = new Template(PostTemplate);
+                var formTemplate = new Template(TemplateHelper.GetTemplatePath(PostTemplate, PostTemplateFolder));
                 formTemplate.SetTag("QuickPayPaymentWindow.merchant_id", Merchant.Trim());
                 formTemplate.SetTag("QuickPayPaymentWindow.agreement_id", Agreement.Trim());
                 return Render(order, formTemplate);
