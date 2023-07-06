@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<VersionPrefix>10.0.1</VersionPrefix>
+		<VersionPrefix>10.0.2</VersionPrefix>
 		<AssemblyVersion>1.0.0.0</AssemblyVersion>
 		<Title>QuickPay Payment Window</Title>
 		<Description>The QuickPay Payment Window checkout handler is designed to work with QuickPay v10.</Description>
