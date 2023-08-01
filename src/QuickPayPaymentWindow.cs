@@ -111,7 +111,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets path to template that renders before user will be redirected to Quick Pay service
         /// </summary>
-        [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=templates/{PostTemplateFolder}")]
+        [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{PostTemplateFolder}")]
         public string PostTemplate
         {
             get
@@ -124,7 +124,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets path to template that renders when user canceled payment on Quick Pay service
         /// </summary>
-        [AddInParameter("Cancel template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=templates/{CancelTemplateFolder}")]
+        [AddInParameter("Cancel template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{CancelTemplateFolder}")]
         public string CancelTemplate
         {
             get
@@ -137,7 +137,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets path to template that renders when error happened during Quick Pay service work
         /// </summary>
-        [AddInParameter("Error template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=templates/{ErrorTemplateFolder}")]
+        [AddInParameter("Error template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{ErrorTemplateFolder}")]
         public string ErrorTemplate
         {
             get
