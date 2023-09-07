@@ -739,7 +739,9 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <returns>True, if saving card is supported</returns>
         public bool SavedCardSupported(Order order)
         {
-            return GetCardTypes(true, false).ContainsKey(PaymentMethods);
+            var recurringTypes = GetCardTypes(true, false);
+            var selectedMethods = new HashSet<string>(PaymentMethods.Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
+            return selectedMethods.All(method => recurringTypes.ContainsKey(method));
         }
 
         private void UseSavedCardInternal(Order order, PaymentCardToken savedCard = null)
