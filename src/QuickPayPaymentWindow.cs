@@ -1473,6 +1473,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                     {"swish", "Swish"},
                     {"trustly", "Trustly"},
                     {"vipps", "Vipps"},
+                    {"vippspsp", "Vipps via Quickpay"},
                     {"paysafecard", "Paysafecard"}
                 };
 
