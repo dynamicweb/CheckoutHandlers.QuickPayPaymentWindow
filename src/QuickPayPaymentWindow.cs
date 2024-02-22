@@ -1,4 +1,13 @@
-﻿using Dynamicweb.Caching;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using Dynamicweb.Caching;
 using Dynamicweb.Core;
 using Dynamicweb.Ecommerce.Cart;
 using Dynamicweb.Ecommerce.Orders;
@@ -8,15 +17,6 @@ using Dynamicweb.Extensibility.AddIns;
 using Dynamicweb.Extensibility.Editors;
 using Dynamicweb.Rendering;
 using Dynamicweb.Security.UserManagement;
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading;
 
 namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 {
@@ -25,7 +25,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
     /// </summary>
 	[AddInName("QuickPay Payment Window"),
      AddInDescription("QuickPay Payment Window Checkout Handler")]
-    public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IDropDownOptions, IRemotePartialCapture, ISavedCard, IRecurring, IPartialReturn, IFullReturn
+    public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOptions, IRemotePartialCapture, ISavedCard, IRecurring, IPartialReturn, IFullReturn
     {
         private enum PostModes { Auto, Template, Inline }
 
@@ -111,7 +111,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets path to template that renders before user will be redirected to Quick Pay service
         /// </summary>
-        [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{PostTemplateFolder}")]
+        [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{PostTemplateFolder}; infoText=The Post template is used to post data to QuickPay when the render mode is Render template or Render inline form.;")]
         public string PostTemplate
         {
             get
@@ -124,7 +124,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets path to template that renders when user canceled payment on Quick Pay service
         /// </summary>
-        [AddInParameter("Cancel template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{CancelTemplateFolder}")]
+        [AddInParameter("Cancel template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{CancelTemplateFolder}; infoText=The Cancel template is shown if the user cancels payment at some point during the checkout process\"Error template\".;")]
         public string CancelTemplate
         {
             get
@@ -137,7 +137,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets path to template that renders when error happened during Quick Pay service work
         /// </summary>
-        [AddInParameter("Error template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{ErrorTemplateFolder}")]
+        [AddInParameter("Error template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{ErrorTemplateFolder}; infoText=The Error template is shown if an error occurs.;")]
         public string ErrorTemplate
         {
             get
@@ -168,7 +168,7 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         /// <summary>
         /// Gets or sets value indicates if CheckoutHandler supports autocapture
         /// </summary>
-        [AddInParameter("Auto capture"), AddInParameterEditor(typeof(YesNoParameterEditor), "")]
+        [AddInParameter("Auto capture"), AddInParameterEditor(typeof(YesNoParameterEditor), "infoText=Auto capture to capture orders as soon as they have been authorized.;")]
         public bool AutoCapture { get; set; }
 
         /// <summary>
@@ -553,24 +553,23 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
         }
 
         #region IDropDownOptions
-
-        public Hashtable GetOptions(string name)
+        public IEnumerable<ParameterOption> GetParameterOptions(string parameterName)
         {
             try
             {
-                switch (name)
+                switch (parameterName)
                 {
                     case "Post mode":
-                        return new Hashtable{
-                            {"Auto", "Auto post (does not use the template)"},
-                            {"Template", "Render template"},
-                            {"Inline", "Render inline form"}
+                        return new List<ParameterOption>(){
+                            new("Auto", "Auto post (does not use the template)"){Hint = "do not use the template."},
+                            new("Template", "Render template"){Hint = "this allows you to customize the information sent to QuickPay via the post template." },
+                            new("Inline", "Render inline form")
                                    };
                     case "Card type":
-                        return new Hashtable(GetCardTypes(false, true));
+                        return new List<ParameterOption>(GetCardTypes(false, true).Select(kv => new ParameterOption(kv.Key, kv.Value)));
 
                     default:
-                        throw new ArgumentException(string.Format("Unknown dropdown name: '{0}'", name));
+                        throw new ArgumentException(string.Format("Unknown dropdown name: '{0}'", parameterName));
                 }
             }
             catch (Exception ex)
@@ -1479,7 +1478,6 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 
                 cardTypes = cardTypes.Union(acquirers).ToDictionary(x => x.Key, y => y.Value);
             }
-
             return translate ? cardTypes.ToDictionary(x => x.Key, y => y.Value) : cardTypes;
         }
 
@@ -1645,7 +1643,6 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 
             return string.Empty;
         }
-
         #endregion
     }
 }
