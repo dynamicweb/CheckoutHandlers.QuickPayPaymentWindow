@@ -305,24 +305,24 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 else
                 {
                     var formValues = new Dictionary<string, string>
-                                     {
-                                         {"version", "v10"},
-                                         {"merchant_id", Merchant.Trim()},
-                                         {"agreement_id", Agreement.Trim()},
-                                         {"order_id", order.Id},
-                                         {"language", LanguageCode},
-                                         {"amount", order.Price.PricePIP.ToString()},
-                                         {"currency", order.Price.Currency.Code},
-                                         {"continueurl", receiptUrl ?? ContinueUrl(order, false)},
-                                         {"cancelurl", cancelUrl ?? CancelUrl(order)},
-                                         {"callbackurl", CallbackUrl(order, headless)},
-                                         {"autocapture", AutoCapture ? "1" : "0"},
-                                         {"autofee", AutoFee ? "1" : "0"},
-                                         {"payment_methods", PaymentMethods},
-                                         {"branding_id", Branding},
-                                         {"google_analytics_tracking_id", GoogleAnalyticsTracking},
-                                         {"google_analytics_client_id", GoogleAnalyticsClient}
-                                     };
+                    {
+                        {"version", "v10"},
+                        {"merchant_id", Merchant.Trim()},
+                        {"agreement_id", Agreement.Trim()},
+                        {"order_id", order.Id},
+                        {"language", LanguageCode},
+                        {"amount", order.Price.PricePIP.ToString()},
+                        {"currency", order.Price.Currency.Code},
+                        {"continueurl", receiptUrl ?? ContinueUrl(order, false)},
+                        {"cancelurl", cancelUrl ?? CancelUrl(order)},
+                        {"callbackurl", CallbackUrl(order, headless)},
+                        {"autocapture", AutoCapture ? "1" : "0"},
+                        {"autofee", AutoFee ? "1" : "0"},
+                        {"payment_methods", PaymentMethods},
+                        {"branding_id", Branding},
+                        {"google_analytics_tracking_id", GoogleAnalyticsTracking},
+                        {"google_analytics_client_id", GoogleAnalyticsClient}
+                    };
 
                     formValues.Add("checksum", ComputeHash(ApiKey, GetMacString(formValues)));
 
@@ -560,13 +560,14 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
                 switch (parameterName)
                 {
                     case "Post mode":
-                        return new List<ParameterOption>(){
-                            new("Auto", "Auto post (does not use the template)"){Hint = "do not use the template."},
-                            new("Template", "Render template"){Hint = "this allows you to customize the information sent to QuickPay via the post template." },
-                            new("Inline", "Render inline form")
-                                   };
+                        return new List<ParameterOption>
+                        {
+                            new("Auto post (does not use the template)", "Auto") { Hint = "do not use the template." },
+                            new("Render template", "Template") { Hint = "this allows you to customize the information sent to QuickPay via the post template." },
+                            new("Render inline form", "Inline")
+                        };
                     case "Card type":
-                        return new List<ParameterOption>(GetCardTypes(false, true).Select(kv => new ParameterOption(kv.Key, kv.Value)));
+                        return GetCardTypes(false, true).Select(pair => new ParameterOption(pair.Value, pair.Key)).ToList();
 
                     default:
                         throw new ArgumentException(string.Format("Unknown dropdown name: '{0}'", parameterName));
@@ -1422,7 +1423,8 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 
         private Dictionary<string, string> GetCardTypes(bool recurringOnly, bool translate)
         {
-            var cardTypes = new Dictionary<string, string>{
+            var cardTypes = new Dictionary<string, string>
+            {
                 {"creditcard", "All card type payments"},
                 {"american-express", "American Express credit card"},
                 {"american-express-dk", "American Express (Danish card)"},
@@ -1456,7 +1458,8 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow
 
             if (!recurringOnly)
             {
-                var acquirers = new Dictionary<string, string>{
+                var acquirers = new Dictionary<string, string>
+                {
                     {"apple-pay", "Apple pay"},
                     {"anyday-split", "ANYDAY Split"},
                     {"google-pay", "Google pay"},
