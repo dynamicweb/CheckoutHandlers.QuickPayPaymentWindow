@@ -252,12 +252,13 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     }
 
 
-    #endregion
+    #endregion    
 
     /// <summary>
     /// Post values based on order to QuickPay
     /// </summary>
     /// <param name="order">The order to checkout</param>
+    /// <param name="parameters">Checkout parameters</param>
     /// <remarks>
     ///		These are the fields that QuickPay should get
     ///		merchant_id 	                /[^d]$/  	            This is your Merchant Account id.
@@ -279,19 +280,6 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     ///		google_analytics_client_id      /[^d]$/                 Your Google Analytics client ID.
     ///		checksum 	                    /^[a-z0-9]{32}$/ 	    The calculated checksum of your data./ 	
     /// </remarks>
-    [Obsolete("Use BeginCheckout instead.")]
-    public override string StartCheckout(Order order) => StartCheckout(order, false, null, null);
-
-    [Obsolete("Use BeginCheckout instead.")]
-    public override string StartCheckout(Order order, bool headless, string? receiptUrl, string? cancelUrl)
-    {
-        var result = BeginCheckout(order, new() { ReceiptUrl = receiptUrl, CancelUrl = cancelUrl });
-        if (result is ContentOutputResult contentOutputResult)
-            return contentOutputResult.Content;
-
-        return string.Empty;
-    }
-
     public override OutputResult BeginCheckout(Order order, CheckoutParameters parameters)
     {
         bool headless = parameters is not null ? true : false;
@@ -368,21 +356,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             LogError(order, ex, "Unhandled exception with message: {0}", ex.Message);
             return PrintErrorTemplate(order, ex.Message);
         }
-    }
-
-    /// <summary>
-    /// Handles redirect from QuickPay with state
-    /// </summary>
-    /// <param name="order">Order for processing</param>
-    /// <returns>String representation of template output</returns>
-    [Obsolete("Use HandleRequest instead.")]
-    public override string Redirect(Order order)
-    {
-        if (HandleRequest(order) is ContentOutputResult contentOutputResult)
-            return contentOutputResult.Content;
-
-        return string.Empty;
-    }
+    }    
 
     /// <summary>
     ///  Handles redirect from QuickPay with state
