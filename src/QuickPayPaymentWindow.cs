@@ -1,4 +1,5 @@
 ﻿using Dynamicweb.Caching;
+using Dynamicweb.Configuration;
 using Dynamicweb.Core;
 using Dynamicweb.Ecommerce.Cart;
 using Dynamicweb.Ecommerce.Orders;
@@ -14,9 +15,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow;
 
@@ -27,8 +31,6 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow;
  AddInDescription("QuickPay Payment Window Checkout Handler")]
 public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOptions, IRemotePartialCapture, ISavedCard, IRecurring, IPartialReturn, IFullReturn
 {
-    private enum PostModes { Auto, Template, Inline }
-
     private PostModes postMode = PostModes.Auto;
     private static object lockObject = new object();
     private string postTemplate;
@@ -38,12 +40,6 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     private const string PostTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Post";
     private const string CancelTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Cancel";
     private const string ErrorTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Error";
-
-    private enum ErrorType { Undefined, SavedCard }
-
-    private enum CheckDataResult { Error, CallbackSucceed, SplitCaptureSucceed, FinalCaptureSucceed, PartialReturnSucceed, FullReturnSucceed }
-
-    private enum ApiService { CreatePayment, AuthorizePayment, CapturePayment, CreateCard, GetCardLink, GetCardData, GetCardToken, DeleteCard, RefundPayment, GetPaymentStatus }
 
     #region Addin parameters
 
@@ -83,26 +79,16 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     [AddInParameter("Post mode"), AddInParameterEditor(typeof(DropDownParameterEditor), "NewGUI=true; none=false; SortBy=Value;")]
     public string PostModeSelection
     {
-        get
-        {
-            return postMode.ToString();
-        }
+        get => postMode.ToString();
         set
         {
-            switch (value)
+            postMode = value switch
             {
-                case "Auto":
-                    postMode = PostModes.Auto;
-                    break;
-
-                case "Template":
-                    postMode = PostModes.Template;
-                    break;
-
-                case "Inline":
-                    postMode = PostModes.Inline;
-                    break;
-            }
+                "Auto" => PostModes.Auto,
+                "Template" => PostModes.Template,
+                "Inline" => PostModes.Inline,
+                _ => throw new NotSupportedException($"Unknown value of post mode was used. The value: {value}")
+            };
         }
     }
 
@@ -112,10 +98,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{PostTemplateFolder}; infoText=The Post template is used to post data to QuickPay when the render mode is Render template or Render inline form.;")]
     public string PostTemplate
     {
-        get
-        {
-            return TemplateHelper.GetTemplateName(postTemplate);
-        }
+        get => TemplateHelper.GetTemplateName(postTemplate);
         set => postTemplate = value;
     }
 
@@ -125,10 +108,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     [AddInParameter("Cancel template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{CancelTemplateFolder}; infoText=The Cancel template is shown if the user cancels payment at some point during the checkout process\"Error template\".;")]
     public string CancelTemplate
     {
-        get
-        {
-            return TemplateHelper.GetTemplateName(cancelTemplate);
-        }
+        get => TemplateHelper.GetTemplateName(cancelTemplate);
         set => cancelTemplate = value;
     }
 
@@ -138,10 +118,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     [AddInParameter("Error template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{ErrorTemplateFolder}; infoText=The Error template is shown if an error occurs.;")]
     public string ErrorTemplate
     {
-        get
-        {
-            return TemplateHelper.GetTemplateName(errorTemplate);
-        }
+        get => TemplateHelper.GetTemplateName(errorTemplate);
         set => errorTemplate = value;
     }
 
@@ -186,73 +163,76 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     {
         get
         {
-            var currentLanguageCode = Dynamicweb.Environment.ExecutingContext.GetCulture(true).TwoLetterISOLanguageName;
-            var supportedLanguageCodes = new List<string>(new[] { "da", "de", "es", "fo", "fi", "fr", "kl", "it", "nl", "pl", "pt", "ru", "sv", "nb", "nn" });
+            string currentLanguageCode = Environment.ExecutingContext.GetCulture(true).TwoLetterISOLanguageName;
+            string[] supportedLanguageCodes =
+            [
+                "da",
+                "de",
+                "es",
+                "fo",
+                "fi",
+                "fr",
+                "kl",
+                "it",
+                "nl",
+                "pl",
+                "pt",
+                "ru",
+                "sv",
+                "nb",
+                "nn"
+            ];
             if (!supportedLanguageCodes.Contains(currentLanguageCode))
-            {
                 return "en";
-            }
             else
             {
-                switch (currentLanguageCode) // TFS#19794  MVA: "I have talked to QuickPay supporter again, and finally he said that finnish UI is not translated (hence english UI).Swedish is translated, but it doesn't work with sv apparently - he said that we should try se."
+                // TFS#19794  MVA: "I have talked to QuickPay supporter again, and finally he said that finnish UI is not translated (hence english UI).Swedish is translated, but it doesn't work with sv apparently - he said that we should try se."
+                return currentLanguageCode switch
                 {
-                    case "sv": return "se";
-                    case "nb":
-                    case "nn": return "no";
-                    default: return currentLanguageCode;
-                }
+                    "sv" => "se",
+                    "nb" or "nn" => "no",
+                    _ => currentLanguageCode
+                };
             }
         }
     }
 
     private static string BaseUrl(Order order, bool headless = false)
     {
-        var disablePortNumber = Dynamicweb.Configuration.SystemConfiguration.Instance.GetValue("/Globalsettings/System/http/DisableBaseHrefPort") == "True";
-        var portString = (Context.Current.Request.Url.IsDefaultPort || disablePortNumber) ? string.Empty : string.Format(":{0}", Context.Current.Request.Url.Port);
-        //var portString = string.Empty;
-        var pageId = Dynamicweb.Context.Current.Request["ID"] == null ? string.Empty : string.Format("ID={0}&", Dynamicweb.Context.Current.Request["ID"]);
+        bool disablePortNumber = SystemConfiguration.Instance.GetValue("/Globalsettings/System/http/DisableBaseHrefPort") == "True";
+        string portString = Context.Current.Request.Url.IsDefaultPort || disablePortNumber ? string.Empty : $":{Context.Current.Request.Url.Port}";
+        string pageId = Context.Current.Request["ID"] is null ? string.Empty : $"ID={Context.Current.Request["ID"]}&";
 
         if (headless)
             return $"{Context.Current.Request.Url.Scheme}://{Context.Current.Request.Url.Host}{portString}/dwapi/ecommerce/carts/callback?{OrderIdRequestName}={order.Id}";
 
-        return string.Format("{2}://{0}{3}/Default.aspx?{1}{5}={4}", Context.Current.Request.Url.Host, pageId, Context.Current.Request.Url.Scheme, portString, order.Id, OrderIdRequestName);
+        return $"{Context.Current.Request.Url.Scheme}://{Context.Current.Request.Url.Host}{portString}/Default.aspx?{pageId}{OrderIdRequestName}={order.Id}";
     }
 
     private static string CardSavedUrl(Order order, string cardId, string cardName) => $"{BaseUrl(order)}&QuickPayState=CardSaved&CardId={cardId}&CardName={cardName}";
 
     private static string ContinueUrl(Order order) => $"{BaseUrl(order)}&QuickPayState=Ok";
 
-    private static string CancelUrl(Order order)
+    private static string CancelUrl(Order order) => string.Format("{0}&QuickPayState=Cancel", BaseUrl(order));
+
+    private static string CallbackUrl(Order order, bool headless = false) => string.Format("{0}&QuickPayState=Callback&redirect=false", BaseUrl(order, headless));
+
+    private string GetServiceLink(ApiService service, string operationID = "", string parameters = "") => service switch
     {
-        return string.Format("{0}&QuickPayState=Cancel", BaseUrl(order));
-    }
+        ApiService.CreatePayment => string.Format("https://api.quickpay.net/payments"),
+        ApiService.CreateCard => string.Format("https://api.quickpay.net/cards"),
+        ApiService.GetCardLink => string.Format("https://api.quickpay.net/cards/{0}/link", operationID),
+        ApiService.GetCardData => string.Format("https://api.quickpay.net/cards/{0}", operationID),
+        ApiService.GetCardToken => string.Format("https://api.quickpay.net/cards/{0}/tokens", operationID),
+        ApiService.AuthorizePayment => string.Format("https://api.quickpay.net/payments/{0}/authorize{1}", operationID, parameters),
+        ApiService.CapturePayment => string.Format("https://api.quickpay.net/payments/{0}/capture", operationID),
+        ApiService.DeleteCard => string.Format("https://api.quickpay.net/cards/{0}/cancel", operationID),
+        ApiService.RefundPayment => string.Format("https://api.quickpay.net/payments/{0}/refund{1}", operationID, parameters),
+        ApiService.GetPaymentStatus => string.Format("https://api.quickpay.net/payments/{0}{1}", operationID, parameters),
+        _ => string.Empty
+    };
 
-    private static string CallbackUrl(Order order, bool headless = false)
-    {
-        return string.Format("{0}&QuickPayState=Callback&redirect=false", BaseUrl(order, headless));
-    }
-
-    private string GetServiceLink(ApiService service, string operationID = "", string parameters = "")
-    {
-        string resultLink = string.Empty;
-        switch (service)
-        {
-            case ApiService.CreatePayment: resultLink = string.Format("https://api.quickpay.net/payments"); break;
-            case ApiService.CreateCard: resultLink = string.Format("https://api.quickpay.net/cards"); break;
-            case ApiService.GetCardLink: resultLink = string.Format("https://api.quickpay.net/cards/{0}/link", operationID); break;
-            case ApiService.GetCardData: resultLink = string.Format("https://api.quickpay.net/cards/{0}", operationID); break;
-            case ApiService.GetCardToken: resultLink = string.Format("https://api.quickpay.net/cards/{0}/tokens", operationID); break;
-            case ApiService.AuthorizePayment: resultLink = string.Format("https://api.quickpay.net/payments/{0}/authorize{1}", operationID, parameters); break;
-            case ApiService.CapturePayment: resultLink = string.Format("https://api.quickpay.net/payments/{0}/capture", operationID); break;
-            case ApiService.DeleteCard: resultLink = string.Format("https://api.quickpay.net/cards/{0}/cancel", operationID); break;
-            case ApiService.RefundPayment: resultLink = string.Format("https://api.quickpay.net/payments/{0}/refund{1}", operationID, parameters); break;
-            case ApiService.GetPaymentStatus: resultLink = string.Format("https://api.quickpay.net/payments/{0}{1}", operationID, parameters); break;
-        }
-        return resultLink;
-    }
-
-
-    #endregion    
+    #endregion
 
     /// <summary>
     /// Post values based on order to QuickPay
@@ -356,7 +336,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             LogError(order, ex, "Unhandled exception with message: {0}", ex.Message);
             return PrintErrorTemplate(order, ex.Message);
         }
-    }    
+    }
 
     /// <summary>
     ///  Handles redirect from QuickPay with state
@@ -439,7 +419,9 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             var metadata = Converter.Deserialize<Dictionary<string, object>>(cardData["metadata"].ToString());
             var cardType = Converter.ToString(metadata["brand"]);
             var cardNubmer = order.TransactionCardNumber = Converter.ToString(metadata["last4"]).PadLeft(16, 'X');
-          
+            int? expirationMonth = Converter.ToNullableInt32(metadata["exp_month"]);
+            int? expirationYear = Converter.ToNullableInt32(metadata["exp_year"]);
+
             if (UserContext.Current.User is User user)
             {
                 var paymentCard = new PaymentCardToken
@@ -450,7 +432,9 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                     CardType = cardType,
                     Identifier = cardNubmer,
                     Token = cardId,
-                    UsedDate = DateTime.Now                   
+                    UsedDate = DateTime.Now,
+                    ExpirationMonth = expirationMonth,
+                    ExpirationYear = expirationYear
                 };
                 Services.PaymentCard.Save(paymentCard);
                 order.SavedCardId = paymentCard.ID;
@@ -528,22 +512,13 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             }
 
             CheckDataResult result = CheckData(order, callbackResponce ?? string.Empty, order.Price.PricePIP);
-
-            string resultInfo;
-            switch (result)
+            string resultInfo = result switch
             {
-                case CheckDataResult.FinalCaptureSucceed:
-                case CheckDataResult.SplitCaptureSucceed: //ViaBill autocapture starts callback.
-                    resultInfo = "Autocapture callback completed successfully";
-                    break;
-                case CheckDataResult.CallbackSucceed:
-                    resultInfo = "Callback completed successfully";
-                    break;
-
-                default:
-                    resultInfo = "Some error occurred during callback process, check error logs";
-                    break;
-            }
+                //ViaBill autocapture starts callback.
+                CheckDataResult.FinalCaptureSucceed or CheckDataResult.SplitCaptureSucceed => "Autocapture callback completed successfully",
+                CheckDataResult.CallbackSucceed => "Callback completed successfully",
+                _ => "Some error occurred during callback process, check error logs"
+            };
 
             LogEvent(order, resultInfo);
         }
@@ -603,7 +578,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         try
         {
             // Check order
-            if (order == null)
+            if (order is null)
             {
                 LogError(null, "Order not set");
                 return new OrderCaptureInfo(OrderCaptureInfo.OrderCaptureState.Failed, "Order not set");
@@ -690,7 +665,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     public void DeleteSavedCard(int savedCardID)
     {
         var savedCard = Services.PaymentCard.GetById(savedCardID);
-        if (savedCard != null)
+        if (savedCard is not null)
         {
             var cardID = savedCard.Token;
             try
@@ -741,18 +716,16 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     /// <returns>True, if saving card is supported</returns>
     public bool SavedCardSupported(Order order)
     {
-        var recurringTypes = GetCardTypes(true, false);
+        Dictionary<string, string> recurringTypes = GetCardTypes(true, false);
         var selectedMethods = new HashSet<string>(PaymentMethods.Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
         return selectedMethods.All(method => recurringTypes.ContainsKey(method));
     }
 
     private void UseSavedCardInternal(Order order, PaymentCardToken savedCard = null)
     {
-        savedCard = savedCard ?? Services.PaymentCard.GetById(order.SavedCardId);
-        if (savedCard == null || order.CustomerAccessUserId != savedCard.UserID)
-        {
+        savedCard ??= Services.PaymentCard.GetById(order.SavedCardId);
+        if (savedCard is null || order.CustomerAccessUserId != savedCard.UserID)
             throw new PaymentCardTokenException("Token is incorrect.");
-        }
 
         if (order.IsRecurringOrderTemplate)
         {
@@ -779,7 +752,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     /// <param name="initialOrder">Base order, used for creating current recurring order</param>
     public void Recurring(Order order, Order initialOrder)
     {
-        if (order != null)
+        if (order is not null)
         {
             try
             {
@@ -798,10 +771,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     /// </summary>
     /// <param name="order">Instance of order</param>
     /// <returns>True, if recurring payments are supported</returns>
-    public bool RecurringSupported(Order order)
-    {
-        return SavedCardSupported(order);
-    }
+    public bool RecurringSupported(Order order) => SavedCardSupported(order);
 
     #endregion
 
@@ -816,7 +786,10 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         errorTemplate.SetTag("CheckoutHandler:ErrorMessage", errorMessage);
         orderRenderer.RenderOrderDetails(errorTemplate, order, true);
 
-        return new ContentOutputResult { Content = errorTemplate.Output() };
+        return new ContentOutputResult
+        {
+            Content = errorTemplate.Output()
+        };
     }
 
     private OutputResult CreateCard(string cardName, Order order, bool headless, string receiptUrl, string cancelUrl)
@@ -838,9 +811,8 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                     Agreement.Trim(), LanguageCode, receiptUrl ?? CardSavedUrl(order, cardID, cardName), cancelUrl ?? CancelUrl(order), CallbackUrl(order, headless), PaymentMethods, GoogleAnalyticsTracking, GoogleAnalyticsClient);
                 int brandingId = Converter.ToInt32(Branding);
                 if (brandingId > 0)
-                {
                     reqbody = string.Format("{0},\"branding_id\": {1}}}", reqbody.Substring(0, reqbody.Length - 1), brandingId);
-                }
+
                 response = Converter.Deserialize<Dictionary<string, object>>(ExecuteRequest(order, ApiService.GetCardLink, cardID, reqbody));
                 LogEvent(order, "QuickPay Card authorize link received");
 
@@ -873,9 +845,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     private void ProcessPayment(Order order, string savedCardToken, bool isRawToken = false)
     {
         if (order.Complete)
-        {
             return;
-        }
 
         Dictionary<string, object> response;
 
@@ -914,10 +884,10 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     {
         try
         {
-            if (apiService != ApiService.DeleteCard)
+            if (apiService is not ApiService.DeleteCard)
             {
                 // Check order
-                if (order == null)
+                if (order is null)
                 {
                     LogError(null, "Order not set");
                     throw new Exception("Order not set");
@@ -929,67 +899,69 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                 }
             }
 
-            //Create HTTP POST request to QuickPay API.
-            HttpWebRequest request = HttpWebRequest.CreateHttp(GetServiceLink(apiService, serviceObjID, serviceParameters));
-
-            request.Headers.Set(HttpRequestHeader.Authorization, string.Format("Basic {0}", Convert.ToBase64String(Encoding.UTF8.GetBytes(string.Format(":{0}", ApiKey)))));
-            request.Headers.Add("Accept-Version", "v10");
-            request.Accept = "application/json, text/plain, */*";
-
-            switch (apiService)
+            using (var handler = GetHandler())
             {
-                case ApiService.GetCardLink: request.Method = "PUT"; break;
-                case ApiService.GetCardData: request.Method = "GET"; break;
-                case ApiService.GetPaymentStatus: request.Method = "GET"; break;
-                default: request.Method = "POST"; break;
-            }
-
-            var httpContent = Encoding.UTF8.GetBytes(body);
-            request.ContentType = string.Format("{0};charset=UTF-8", apiService == ApiService.AuthorizePayment ? "application/x-www-form-urlencoded" : "application/json");
-            request.ContentLength = httpContent.Length;
-
-            string responseText;
-            HttpWebResponse response;
-            try
-            {
-                ServicePointManager.ServerCertificateValidationCallback = ((sender, certificate, chain, sslPolicyErrors) => true);
-                if (request.Method != "GET")
+                using (var client = new HttpClient(handler))
                 {
-                    using (var stream = request.GetRequestStream())
+                    handler.ClientCertificateOptions = ClientCertificateOption.Manual;
+                    handler.ServerCertificateCustomValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true;
+
+                    string apiKey = Convert.ToBase64String(Encoding.UTF8.GetBytes(string.Format(":{0}", ApiKey)));
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", apiKey);
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+                    client.DefaultRequestHeaders.Add("Accept-Version", "v10");
+
+                    string contentType = apiService is ApiService.AuthorizePayment
+                        ? "application/x-www-form-urlencoded"
+                        : "application/json";
+                    var content = new StringContent(body, Encoding.UTF8, contentType);
+
+                    string requestUri = GetServiceLink(apiService, serviceObjID, serviceParameters);
+                    Task<HttpResponseMessage> requestTask = apiService switch
                     {
-                        stream.Write(httpContent, 0, httpContent.Length);
+                        ApiService.GetCardLink => client.PutAsync(requestUri, content),
+                        ApiService.GetCardData or ApiService.GetPaymentStatus => client.GetAsync(requestUri),
+                        _ => client.PostAsync(requestUri, content)
+                    };
+
+                    try
+                    {
+                        using (HttpResponseMessage response = requestTask.GetAwaiter().GetResult())
+                        {
+                            LogEvent(order, "Remote server response: HttpStatusCode = {0}, HttpStatusDescription = {1}",
+                                response.StatusCode, response.ReasonPhrase);
+                            string responseText = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                            LogEvent(order, "Remote server ResponseText: {0}", responseText);
+
+                            return responseText;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        string errorMessage = "Unable to make http request to QuickPay";
+                        LogError(order, ex, $"{errorMessage}: {ex.Message}");
+
+                        if (ex is HttpRequestException requestException)
+                            throw new Exception($"{errorMessage}. Error: {requestException.StatusCode}");
+                        throw new Exception(errorMessage);
                     }
                 }
-                response = (HttpWebResponse)request.GetResponse();
-                LogEvent(order, "Remote server response: HttpStatusCode = {0}, HttpStatusDescription = {1}",
-                         response.StatusCode, response.StatusDescription);
-
-                var reader = new StreamReader(response.GetResponseStream());
-                responseText = reader.ReadToEnd();
-                LogEvent(order, "Remote server ResponseText: {0}", responseText);
-
             }
-            catch (WebException ex)
-            {
-                var reader = new StreamReader(ex.Response.GetResponseStream());
-                string exceptionResponseText = reader.ReadToEnd();
-                string errorMsg = string.IsNullOrEmpty(exceptionResponseText) ? ex.Message : exceptionResponseText;
-
-                LogError(order, ex, "Unable to make http request to QuickPay: {0}", errorMsg);
-                throw new Exception(string.Format("Unable to make http request to QuickPay. Error: {0}", ex.Status));
-            }
-            catch (Exception ex)
-            {
-                LogError(order, ex, "Unable to make http request to QuickPay: {0}", ex.Message);
-                throw new Exception("Unable to make http request to QuickPay");
-            }
-            return responseText;
         }
         catch (Exception ex)
         {
-            LogError(order, ex, "Unexpected error during request to QuickPay: {0}", ex.Message);
-            throw new Exception("Unexpected error during request to QuickPay");
+            string errorMessage = "Unexpected error during request to QuickPay";
+            LogError(order, ex, $"{errorMessage}: {ex.Message}");
+
+            throw new Exception(errorMessage);
         }
+
+        HttpClientHandler GetHandler() => new()
+        {
+            AutomaticDecompression = DecompressionMethods.Deflate | DecompressionMethods.GZip
+        };
     }
 
     /// <remarks>
