@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<VersionPrefix>10.0.8</VersionPrefix>
+		<VersionPrefix>10.1.0</VersionPrefix>
 		<AssemblyVersion>1.0.0.0</AssemblyVersion>
 		<Title>QuickPay Payment Window</Title>
 		<Description>The QuickPay Payment Window checkout handler is designed to work with QuickPay v10.</Description>
@@ -16,17 +16,17 @@
 		<Copyright>Copyright © 2023 Dynamicweb Software A/S</Copyright>
 	</PropertyGroup>
 	<PropertyGroup>
-		<TargetFramework>net7.0</TargetFramework>
+		<TargetFramework>net8.0</TargetFramework>
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<IncludeSymbols>true</IncludeSymbols>
 		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 		<EmbedUntrackedSources>true</EmbedUntrackedSources>
-    	<ContinuousIntegrationBuild >true</ContinuousIntegrationBuild>
+    	<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     	<PublishRepositoryUrl>true</PublishRepositoryUrl>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Dynamicweb.Ecommerce" Version="10.0.34" />
-		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All"/>
+		<PackageReference Include="Dynamicweb.Ecommerce" Version="10.2.2" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="quickpay-logo.png" Pack="true" Visible="false" PackagePath="\" />
