@@ -871,7 +871,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             }
             return PrintErrorTemplate(order, errorMessage);
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             LogError(order, ex, ex.Message);
             return PrintErrorTemplate(order, ex.Message);
@@ -940,7 +940,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                 CheckoutDone(order);
             }
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             LogError(order, ex, ex.Message);
         }
@@ -1378,7 +1378,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             operationStatus.Succeded = !operationStatus.IsPending & operationStatus.StatusCode.Equals("20000");
             return operationStatus;
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             LogError(order, ex, ex.Message);
             return new() { Succeded = false, IsPending = false  };
@@ -1599,7 +1599,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                     break;
             }
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             LogError(order, ex, ex.Message);
             OrderReturnInfo.SaveReturnOperation(OrderReturnOperationState.Failed, "QuickPay refund request failed. Check order logs for details.", doubleAmount, order);
