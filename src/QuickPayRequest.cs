@@ -1,4 +1,5 @@
 ﻿using Dynamicweb.Core;
+using Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow.Models;
 using Dynamicweb.Ecommerce.Orders;
 using System;
 using System.Collections.Generic;
@@ -11,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow;
 
-internal class QuickPayRequest
+internal sealed class QuickPayRequest
 {
     private static readonly string BaseAddress = "https://api.quickpay.net";
 
@@ -34,7 +35,7 @@ internal class QuickPayRequest
         if (configuration.CommandType is not ApiService.DeleteCard)
         {
             Ensure.NotNull(Order, "Order not set");
-            Ensure.Not(string.IsNullOrEmpty(Order.Id), "Order id not set");          
+            Ensure.Not(string.IsNullOrEmpty(Order.Id), "Order id not set");
         }
 
         using (var handler = GetHandler())
@@ -51,20 +52,20 @@ internal class QuickPayRequest
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
                 client.DefaultRequestHeaders.Add("Accept-Version", "v10");
 
-                string commandLink = GetCommandLink(configuration.CommandType, configuration.OperatorId, configuration.OperatorSecondId);
+                string commandLink = GetCommandLink(configuration.CommandType, configuration.OperatorId, configuration.OperatorSecondId, configuration.QueryParameters);
 
                 Task<HttpResponseMessage> requestTask = configuration.CommandType switch
                 {
                     //PUT
                     ApiService.GetCardLink => client.PutAsync(commandLink, GetContent()),
                     //GET
-                    ApiService.GetCardData or
-                    ApiService.GetCardToken or
-                    ApiService.GetPaymentStatus => client.GetAsync(commandLink),
+                    ApiService.GetCard or
+                    ApiService.GetPayment => client.GetAsync(commandLink),
                     //POST
                     ApiService.CreatePayment or
                     ApiService.AuthorizePayment or
                     ApiService.CapturePayment or
+                    ApiService.CreateCardToken or
                     ApiService.CreateCard or
                     ApiService.DeleteCard or
                     ApiService.RefundPayment => client.PostAsync(commandLink, GetContent()),
@@ -78,6 +79,18 @@ internal class QuickPayRequest
                         Log(Order, $"Remote server response: HttpStatusCode = {response.StatusCode}, HttpStatusDescription = {response.ReasonPhrase}");
                         string responseText = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                         Log(Order, $"Remote server ResponseText: {responseText}");
+
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var error = Converter.Deserialize<Error>(responseText);
+                            if (error.ErrorCode > 0 || !string.IsNullOrWhiteSpace(error.Message))
+                            {
+                                string errorMessage = error.ErrorCode > 0
+                                    ? $"Error code: {error.ErrorCode}. Message: {error.Message}."
+                                    : $"Message: {error.Message}.";
+                                throw new Exception(errorMessage);
+                            }
+                        }
 
                         return responseText;
                     }
@@ -96,16 +109,9 @@ internal class QuickPayRequest
 
         HttpContent GetContent()
         {
-            return new StringContent(GetSerializedParameters(configuration.Parameters), Encoding.UTF8, "application/json");
+            Dictionary<string, string> parameters = configuration.Parameters?.ToDictionary(x => x.Key, y => configuration.Parameters[y.Key]?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
 
-            string GetSerializedParameters(Dictionary<string, object> parameters)
-            {
-                if (parameters is null)
-                    return string.Empty;
-
-                var stringParameters = parameters.ToDictionary(x => x.Key, y => parameters[y.Key]?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
-                return Converter.Serialize(parameters);
-            }
+            return new FormUrlEncodedContent(parameters ?? new());
         }
     }
 
@@ -122,15 +128,15 @@ internal class QuickPayRequest
         return command switch
         {
             ApiService.CreatePayment => GetCommandLink("payments"),
+            ApiService.GetPayment => GetCommandLink($"payments/{operatorId}", queryParameters),
             ApiService.AuthorizePayment => GetCommandLink($"payments/{operatorId}/authorize", queryParameters),
             ApiService.CapturePayment => GetCommandLink($"payments/{operatorId}/capture"),
-            ApiService.GetPaymentStatus => GetCommandLink($"payments/{operatorId}", queryParameters),
-            ApiService.CreateCard => GetCommandLink("cards"),
-            ApiService.GetCardLink => GetCommandLink($"cards/{operatorId}/link"),
-            ApiService.GetCardData => GetCommandLink($"cards/{operatorId}"),
-            ApiService.GetCardToken => GetCommandLink($"cards/{operatorId}/tokens"),
-            ApiService.DeleteCard => GetCommandLink($"cards/{operatorId}/cancel"),
             ApiService.RefundPayment => GetCommandLink($"payments/{operatorId}/refund", queryParameters),
+            ApiService.CreateCard => GetCommandLink("cards"),
+            ApiService.GetCard => GetCommandLink($"cards/{operatorId}"),
+            ApiService.GetCardLink => GetCommandLink($"cards/{operatorId}/link"),
+            ApiService.CreateCardToken => GetCommandLink($"cards/{operatorId}/tokens"),
+            ApiService.DeleteCard => GetCommandLink($"cards/{operatorId}/cancel"),
             _ => throw new NotSupportedException($"The api command is not supported. Command: {command}")
         };
 

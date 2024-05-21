@@ -401,7 +401,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             var request = new QuickPayRequest(ApiKey, order);
             var cardData = Converter.Deserialize<Dictionary<string, object>>(request.SendRequest(new()
             {
-                CommandType = ApiService.GetCardData,
+                CommandType = ApiService.GetCard,
                 OperatorId = cardId
             }));
 
@@ -508,8 +508,8 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                 callbackResponce = reader.ReadToEndAsync().GetAwaiter().GetResult();
             }
 
-            CheckDataResult result = CheckData(order, callbackResponce ?? string.Empty, order.Price.PricePIP);
-            string resultInfo = result switch
+            CheckedData checkedData = CheckData(order, callbackResponce ?? string.Empty, order.Price.PricePIP);
+            string resultInfo = checkedData.Result switch
             {
                 //ViaBill autocapture starts callback.
                 CheckDataResult.FinalCaptureSucceed or CheckDataResult.SplitCaptureSucceed => "Autocapture callback completed successfully",
@@ -608,7 +608,8 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             });
 
             order.GatewayResult = responseText;
-            switch (CheckData(order, responseText, amount))
+            CheckedData checkedData = CheckData(order, responseText, amount);
+            switch (checkedData.Result)
             {
                 case CheckDataResult.FinalCaptureSucceed:
                     {
@@ -893,7 +894,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             {
                 response = Converter.Deserialize<Dictionary<string, object>>(request.SendRequest(new()
                 {
-                    CommandType = ApiService.GetCardToken,
+                    CommandType = ApiService.CreateCardToken,
                     OperatorId = savedCardToken
                 }));
                 token = Converter.ToString(response["token"]);
@@ -929,20 +930,23 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             });
             LogEvent(order, "QuickPay payment authorized");
 
-            CheckDataResult result = CheckData(order, responseText, order.Price.PricePIP, false);
+            CheckedData checkedData = CheckData(order, responseText, order.Price.PricePIP, false);
 
-            if (result is CheckDataResult.CallbackSucceed)
+            if (checkedData.Result is CheckDataResult.CallbackSucceed)
                 LogEvent(order, "Callback completed successfully");
             else
             {
                 LogEvent(order, "Some error occurred during callback process, check error logs");
                 order.TransactionStatus = "Failed";
                 CheckoutDone(order);
+
+                throw new Exception(checkedData.Message);
             }
         }
         catch (Exception ex)
         {
             LogError(order, ex, ex.Message);
+            throw new Exception($"Some exception is occured during payment: {ex.Message}");
         }
     }
 
@@ -955,7 +959,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     ///	 QuickPay-API-Version                 API version of the callback-generating request
     ///	      body
     ///	 id                                   id
-    ///	 order_id                             The order id that is proceeding
+    ///	 order_id                             The order id that is proceeding --- NOTE, that this field is only for payment operations, like /payments/{id} (card operations will not have it in the response!)
     ///	 accepted                             If transaction accepted
     ///	 test_mode                            If is in test mode
     ///	 branding_id                          The branding id
@@ -986,29 +990,24 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     ///	 balance                              Captured balance
     ///	 currency                             Currency code
     /// </remarks>
-    private CheckDataResult CheckData(Order order, string responsetext, long transactionAmount, bool doCheckSum = true)
+    private CheckedData CheckData(Order order, string responseText, long transactionAmount, bool doCheckSum = true)
     {
         LogEvent(order, "Response validation started");
 
-        var quickpayResponse = Converter.Deserialize<Dictionary<string, object>>(responsetext);
+        var quickpayResponse = Converter.Deserialize<Dictionary<string, object>>(responseText);
         var operations = Converter.Deserialize<Dictionary<string, object>[]>(Converter.ToString(quickpayResponse["operations"]));
         var metadata = Converter.Deserialize<Dictionary<string, object>>(Converter.ToString(quickpayResponse["metadata"]));
 
+        string errorMessage = "Some unhandled error is occured.";
+
         Dictionary<string, object> operation;
         if (!order.Complete)
-        {
             operation = operations.LastOrDefault(op => Converter.ToString(op["type"]) == "authorize");
-        }
         else
-        {
             operation = operations.Last();
-        }
 
         if (operation is null)
-        {
-            LogError(order, "QuickPay returned no transaction information");
-            return CheckDataResult.Error;
-        }
+            return GetErrorResult("QuickPay returned no transaction information");
 
         var isAccepted = Converter.ToBoolean(quickpayResponse["accepted"]);
         var quickPayStatusCode = Converter.ToString(operation["qp_status_code"]);
@@ -1016,48 +1015,43 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         // Skip "Forced 3DS test operation" callback - it have no information we need to know / update
         // A new callback will be initiated after user passed the 3D Secure
         if (!isAccepted && "30100".Equals(quickPayStatusCode, StringComparison.OrdinalIgnoreCase))
-        {
-            return CheckDataResult.CallbackSucceed;
-        }
+            return new(CheckDataResult.CallbackSucceed);
 
         var requiredFields = new List<string>
         {
             "id",
-            "order_id",
             "accepted",
             "operations",
             "metadata",
             "created_at"
         };
+
         var result = CheckDataResult.Error;
 
-        foreach (var key in requiredFields.Where(x => !quickpayResponse.ContainsKey(x) || quickpayResponse[x] == null))
-        {
-            LogError(
-                order,
-                "The expected parameter from QuickPay '{0}' was not send",
-                key
-            );
-            return CheckDataResult.Error;
-        }
+        foreach (var key in requiredFields.Where(x => !quickpayResponse.ContainsKey(x) || quickpayResponse[x] is null))
+            return GetErrorResult($"The expected parameter from QuickPay '{key}' was not send");
 
         if (!isAccepted)
         {
-            LogError(
-                order,
-                "The quick pay did not accept the transaction"
-            );
-            return CheckDataResult.Error;
+            errorMessage = "The quick pay did not accept the transaction";
+
+            string fraudSuspectedKey = "fraud_suspected";
+            if (metadata.ContainsKey(fraudSuspectedKey) && Converter.ToBoolean(metadata[fraudSuspectedKey]) is true)
+            {
+                string[] fraudRemarks = Converter.Deserialize<string[]>(Converter.ToString(metadata["fraud_remarks"]));
+                string fraudText = string.Join(System.Environment.NewLine, fraudRemarks);
+                errorMessage = $"{errorMessage}. {fraudText}";
+            }
+
+            return GetErrorResult(errorMessage);
         }
 
-        if (Converter.ToString(quickpayResponse["order_id"]) != order.Id)
+        string orderIdKey = "order_id";
+        if (quickpayResponse.ContainsKey(orderIdKey))
         {
-            LogError(
-                order,
-                "The ordernumber returned from callback does not match with the ordernumber set on the order: Callback: '{0}', order: '{1}'",
-                quickpayResponse["order_id"], order.Id
-            );
-            return CheckDataResult.Error;
+            string responseOrderId = Converter.ToString(quickpayResponse[orderIdKey]);
+            if (!string.IsNullOrEmpty(responseOrderId) && !responseOrderId.Equals(order.Id, StringComparison.OrdinalIgnoreCase))
+                return GetErrorResult($"The order id returned from callback does not match with the order id set on the order: Callback: '{responseOrderId}', order: '{order.Id}'")
         }
 
         LogEvent(
@@ -1070,59 +1064,25 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         {
             case "authorize":
                 if (Converter.ToString(quickpayResponse["type"]) != "Payment")
-                {
-                    LogError(
-                        order,
-                        "Unsupported transaction type: {0}",
-                        Converter.ToString(quickpayResponse["type"])
-                    );
-                    return CheckDataResult.Error;
-                }
+                    return GetErrorResult($"Unsupported transaction type: {Converter.ToString(quickpayResponse["type"])}");
 
                 if (Converter.ToString(quickpayResponse["currency"]) != order.Price.Currency.Code)
-                {
-                    LogError(
-                        order,
-                            "The currency return from callback does not match the amount set on the order: Callback: {0}, order: {1}",
-                            quickpayResponse["currency"], order.Price.Currency.Code
-                    );
-                    return CheckDataResult.Error;
-                }
+                    return GetErrorResult($"The currency return from callback does not match the amount set on the order: Callback: {quickpayResponse["currency"]}, order: {order.Price.Currency.Code}");
 
                 if (doCheckSum)
                 {
-                    var calculatedHash = ComputeHash(PrivateKey, responsetext);
+                    var calculatedHash = ComputeHash(PrivateKey, responseText);
                     var callbackCheckSum = Context.Current.Request.Headers["QuickPay-Checksum-Sha256"];
 
                     if (!calculatedHash.Equals(callbackCheckSum, StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        LogError(
-                            order,
-                            "The HMAC checksum returned from callback does not match: Callback: {0}, calculated: {1}",
-                            callbackCheckSum, calculatedHash
-                        );
-                        return CheckDataResult.Error;
-                    }
+                        return GetErrorResult($"The HMAC checksum returned from callback does not match: Callback: {callbackCheckSum}, calculated: {calculatedHash}");
                 }
 
                 if (Converter.ToString(operation["amount"]) != order.Price.PricePIP.ToString())
-                {
-                    LogError(
-                        order,
-                        "The amount returned from callback does not match the amount set on the order: Callback: {0}, order: {1}",
-                        Converter.ToString(operation["amount"]), order.Price.PricePIP
-                    );
-                    return CheckDataResult.Error;
-                }
+                    return GetErrorResult($"The amount returned from callback does not match the amount set on the order: Callback: {Converter.ToString(operation["amount"])}, order: {order.Price.PricePIP}");
 
                 if (Converter.ToBoolean(quickpayResponse["test_mode"]) && !TestMode)
-                {
-                    LogError(
-                        order,
-                        "Test card info was used for payment. To make test payment enable test mode in backoffice"
-                    );
-                    return CheckDataResult.Error;
-                }
+                    return GetErrorResult("Test card info was used for payment. To make test payment enable test mode in backoffice");
 
                 // Check the state of the callback
                 // 20000	Approved
@@ -1136,44 +1096,29 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                         break;
 
                     case "40000":
-                        LogEvent(
-                            order,
-                            "Not approved: QuickPay response: 'Rejected by acquirer', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
-                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"])
-                        );
-                        return CheckDataResult.Error;
+                        errorMessage = string.Format("Not approved: QuickPay response: 'Rejected by acquirer', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
+                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"]));
+                        return GetErrorResult(errorMessage, true);
 
                     case "40001":
-                        LogEvent(
-                            order,
-                            "Not approved: QuickPay response: 'Request Data Error', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
-                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"])
-                        );
-                        return CheckDataResult.Error;
+                        errorMessage = string.Format("Not approved: QuickPay response: 'Request Data Error', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
+                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"]));
+                        return GetErrorResult(errorMessage, true);
 
                     case "50000":
-                        LogEvent(
-                            order,
-                            "Not approved: QuickPay response: 'Gateway Error', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
-                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"])
-                        );
-                        return CheckDataResult.Error;
+                        errorMessage = string.Format("Not approved: QuickPay response: 'Gateway Error', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
+                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"]));
+                        return GetErrorResult(errorMessage, true);
 
                     case "50300":
-                        LogEvent(
-                            order,
-                            "Not approved: QuickPay response: 'Communications Error (with Acquirer)', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
-                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"])
-                        );
-                        return CheckDataResult.Error;
+                        errorMessage = string.Format("Not approved: QuickPay response: 'Communications Error (with Acquirer)', qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
+                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"]));
+                        return GetErrorResult(errorMessage, true);
 
                     default:
-                        LogEvent(
-                            order,
-                            "Not approved: Unexpected status code. QuickPay response: , qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
-                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"])
-                        );
-                        return CheckDataResult.Error;
+                        errorMessage = string.Format("Not approved: Unexpected status code. QuickPay response: , qp_status_code: {0}, qp_status_msg: {1}, aq_status_code: '{2}', aq_status_msg: '{3}'.",
+                            quickPayStatusCode, Converter.ToString(operation["qp_status_msg"]), Converter.ToString(operation["aq_status_code"]), Converter.ToString(operation["aq_status_msg"]));
+                        return GetErrorResult(errorMessage, true);
                 }
 
                 if (AutoFee && operation.ContainsKey("fee"))
@@ -1214,9 +1159,8 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                 CheckoutDone(order);
 
                 if (!order.Complete)
-                {
                     SetOrderSucceeded(order, false);
-                }
+
                 result = CheckDataResult.CallbackSucceed;
                 break;
 
@@ -1224,16 +1168,8 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                 long captureAmount, balance;
                 if (long.TryParse(Converter.ToString(operation["amount"]), out captureAmount) && long.TryParse(Converter.ToString(quickpayResponse["balance"]), out balance))
                 {
-
                     if (transactionAmount != captureAmount)
-                    {
-                        LogError(
-                            order,
-                            "The amount returned from response does not match the amount set to capture: Response: {0}, Amount to capture: {1}",
-                            Converter.ToString(operation["amount"]), transactionAmount
-                        );
-                        return CheckDataResult.Error;
-                    }
+                        return GetErrorResult($"The amount returned from response does not match the amount set to capture: Response: {Converter.ToString(operation["amount"])}, Amount to capture: {transactionAmount}");
 
                     var qpStatusCode = Converter.ToString(operation["qp_status_code"]);
                     if (Converter.ToBoolean(operation["pending"]))
@@ -1257,47 +1193,29 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
                         }
 
                         if (attempts == maxAttempts && captureStatus.IsPending)
-                        {
-                            LogError(order, $"Capture was not completed within {attempts} seconds. Try again later");
-                            return CheckDataResult.Error;
-                        }
+                            return GetErrorResult($"Capture was not completed within {attempts} seconds. Try again later");
                     }
 
                     if (!string.IsNullOrEmpty(qpStatusCode) && qpStatusCode != "20000")
-                    {
-                        LogError(order, $"Capture failed with error message: {qpStatusCode}");
-                        return CheckDataResult.Error;
-                    }
+                        return GetErrorResult($"Capture failed with error message: {qpStatusCode}");
 
                     if (order.Price.PricePIP == captureAmount + balance)
-                    {
-                        return CheckDataResult.FinalCaptureSucceed;
-                    }
+                        return new(CheckDataResult.FinalCaptureSucceed);
                     else
-                    {
-                        return CheckDataResult.SplitCaptureSucceed;
-                    }
+                        return new(CheckDataResult.SplitCaptureSucceed);
                 }
                 else
                 {
-                    LogError(order, "Error with handle amounts from quickpay data");
-                    return CheckDataResult.Error;
+                    return GetErrorResult(errorMessage);
                 }
 
             case "refund":
                 long returnAmount;
                 if (long.TryParse(Converter.ToString(operation["amount"]), out returnAmount) && long.TryParse(Converter.ToString(quickpayResponse["balance"]), out balance))
                 {
-
                     if (transactionAmount != returnAmount)
-                    {
-                        LogError(
-                            order,
-                            "The amount returned from response does not match the amount set to return: Response: {0}, Amount to return: {1}",
-                            Converter.ToString(operation["amount"]), transactionAmount
-                        );
-                        return CheckDataResult.Error;
-                    }
+                        return GetErrorResult($"The amount returned from response does not match the amount set to return: Response: {Converter.ToString(operation["amount"])}, Amount to return: {transactionAmount}");
+
                     //Nets does not allow capture on previously refunded
                     if (order.CaptureInfo.State == OrderCaptureInfo.OrderCaptureState.Split)
                     {
@@ -1307,27 +1225,31 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
 
                     var returned = PriceHelper.ConvertToPIP(order.Currency, order.ReturnOperations.Where(returnOperation => returnOperation.State == OrderReturnOperationState.PartiallyReturned).Sum(x => x.Amount));
                     if (PriceHelper.ConvertToPIP(order.Currency, order.CaptureAmount) == (returnAmount + returned))
-                    {
-                        return CheckDataResult.FullReturnSucceed;
-                    }
+                        return new(CheckDataResult.FullReturnSucceed);
                     else
-                    {
-                        return CheckDataResult.PartialReturnSucceed;
-                    }
+                        return new(CheckDataResult.PartialReturnSucceed);
                 }
                 else
                 {
-                    LogError(order, "Error with handle amounts from quickpay data");
-                    return CheckDataResult.Error;
+                    return GetErrorResult("Error with handle amounts from quickpay data");
                 }
 
             default:
-                LogError(order, "Unsuported transaction type");
-                return CheckDataResult.Error;
+                return GetErrorResult("Unsuported transaction type");
         }
 
         Cache.Current.Set(orderCacheKey + order.Id, order, new CacheItemPolicy { AbsoluteExpiration = DateTime.Now.AddMinutes(10) });
-        return result;
+        return new(result);
+
+        CheckedData GetErrorResult(string errorMessage, bool logAsEvent = false)
+        {
+            if (logAsEvent)
+                LogEvent(order, errorMessage);
+            else
+                LogError(order, errorMessage);
+
+            return new(CheckDataResult.Error, errorMessage);
+        }
     }
 
     private OperationStatus GetLastOperationStatus(Order order, string operationTypeLock = "")
@@ -1338,7 +1260,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             var request = new QuickPayRequest(ApiKey, order);
             var responseText = request.SendRequest(new()
             {
-                CommandType = ApiService.GetPaymentStatus,
+                CommandType = ApiService.GetPayment,
                 OperatorId = order.TransactionNumber,
                 QueryParameters = string.IsNullOrWhiteSpace(order.TransactionNumber)
                     ? new() { ["order_id"] = order.Id }
@@ -1381,7 +1303,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         catch (Exception ex)
         {
             LogError(order, ex, ex.Message);
-            return new() { Succeded = false, IsPending = false  };
+            return new() { Succeded = false, IsPending = false };
         }
     }
 
@@ -1585,8 +1507,8 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             });
 
             LogEvent(order, "QuickPay has refunded payment", DebuggingInfoType.ReturnResult);
-            var result = CheckData(order, responseText, amount, false);
-            switch (result)
+            CheckedData checkedData = CheckData(order, responseText, amount, false);
+            switch (checkedData.Result)
             {
                 case CheckDataResult.Error:
                     OrderReturnInfo.SaveReturnOperation(OrderReturnOperationState.Failed, "QuickPay response validation failed. Check order logs for details.", doubleAmount, order);
