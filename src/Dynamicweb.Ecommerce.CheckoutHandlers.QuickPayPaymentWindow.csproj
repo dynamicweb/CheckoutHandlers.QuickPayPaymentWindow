@@ -25,6 +25,16 @@
     	<PublishRepositoryUrl>true</PublishRepositoryUrl>
 	</PropertyGroup>
 	<ItemGroup>
+	  <None Remove="Updates\Card.cshtml" />
+	  <None Remove="Updates\InlineForm.cshtml" />
+	  <None Remove="Updates\Post.cshtml" />
+	</ItemGroup>
+	<ItemGroup>
+	  <EmbeddedResource Include="Updates\Card.cshtml" />
+	  <EmbeddedResource Include="Updates\InlineForm.cshtml" />
+	  <EmbeddedResource Include="Updates\Post.cshtml" />
+	</ItemGroup>
+	<ItemGroup>
 		<PackageReference Include="Dynamicweb.Ecommerce" Version="10.4.2" />
 		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
 	</ItemGroup>

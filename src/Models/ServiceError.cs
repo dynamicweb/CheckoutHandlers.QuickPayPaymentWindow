@@ -2,7 +2,8 @@
 
 namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow.Models;
 
-internal sealed class Error
+[DataContract]
+internal sealed class ServiceError
 {
     [DataMember(Name = "message")]
     public string Message { get; set; }

@@ -82,7 +82,7 @@ internal sealed class QuickPayRequest
 
                         if (!response.IsSuccessStatusCode)
                         {
-                            var error = Converter.Deserialize<Error>(responseText);
+                            var error = Converter.Deserialize<ServiceError>(responseText);
                             if (error.ErrorCode > 0 || !string.IsNullOrWhiteSpace(error.Message))
                             {
                                 string errorMessage = error.ErrorCode > 0
@@ -111,7 +111,11 @@ internal sealed class QuickPayRequest
         {
             Dictionary<string, string> parameters = configuration.Parameters?.ToDictionary(x => x.Key, y => configuration.Parameters[y.Key]?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
 
-            return new FormUrlEncodedContent(parameters ?? new());
+            if (configuration.CommandType is ApiService.AuthorizePayment)
+                return new FormUrlEncodedContent(parameters ?? new());
+
+            string content = parameters?.Any() is true ? Converter.Serialize(parameters) : string.Empty;
+            return new StringContent(content, Encoding.UTF8, "application/json");
         }
     }
 
