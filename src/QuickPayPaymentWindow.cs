@@ -94,7 +94,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     /// <summary>
     /// Gets or sets path to template that renders before user will be redirected to Quick Pay service
     /// </summary>
-    [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{PostTemplateFolder}; infoText=The Post template is used to post data to QuickPay when the render mode is Render template or Render inline form. Please note, that in the case of \"save new card\" the template is for informational purposes only (not for interacting with the Quickpay Form).")]
+    [AddInParameter("Post template"), AddInParameterEditor(typeof(TemplateParameterEditor), $"folder=Templates/{PostTemplateFolder}; infoText=The Post template is used to post data to QuickPay when the render mode is Render template or Render inline form.")]
     public string PostTemplate
     {
         get => TemplateHelper.GetTemplateName(postTemplate);
