@@ -1,10 +1,7 @@
 ﻿using Dynamicweb.Ecommerce.Orders;
 using Dynamicweb.Rendering;
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text;
 
 namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow;
 
@@ -13,38 +10,37 @@ namespace Dynamicweb.Ecommerce.CheckoutHandlers.QuickPayPaymentWindow;
 /// </summary>
 internal sealed class QuickpayTemplateHelper
 {
-    public Order Order { get; set; }
-
-    public string Merchant { get; set; }
-
     public string Agreement { get; set; }
-
-    public string LanguageCode { get; set; }
-
-    public string[] AvailableLanguages { get; set; }
-
-    public string ReceiptUrl { get; set; }
-
-    public string CancelUrl { get; set; }
-
-    public string CallbackUrl { get; set; }
-
-    public string ContinueUrl { get; set; }
 
     public bool AutoCapture { get; set; }
 
     public bool AutoFee { get; set; }
 
-    public string PaymentMethods { get; set; }
+    public Dictionary<string, string> AvailableLanguages { get; set; }
 
     public Dictionary<string, string> AvailablePaymentMethods { get; set; }
 
     public int Branding { get; set; }
 
-    public string GoogleAnalyticsTracking { get; set; }
+    public string CallbackUrl { get; set; }
+
+    public string CancelUrl { get; set; }
+
+    public string ContinueUrl { get; set; }
 
     public string GoogleAnalyticsClient { get; set; }
 
+    public string GoogleAnalyticsTracking { get; set; }
+
+    public string LanguageCode { get; set; }
+
+    public string Merchant { get; set; }
+
+    public Order Order { get; set; }
+
+    public string PaymentMethods { get; set; }
+
+    public string ReceiptUrl { get; set; }
 
     /// <summary>
     /// Gets values for Quickpay Form: https://learn.quickpay.net/tech-talk/payments/form/   
@@ -60,7 +56,7 @@ internal sealed class QuickpayTemplateHelper
         quickpayValues["currency"] = Order.Price.Currency.Code;
         quickpayValues["autocapture"] = AutoCapture ? "1" : "0";
         quickpayValues["autofee"] = AutoFee ? "1" : "0";
-        quickpayValues["checksum"] = Hash.ComputeHash(apiKey, GetMacString(quickpayValues));
+        quickpayValues["checksum"] = Hash.ComputeHash(apiKey, quickpayValues);
 
         return quickpayValues;
     }
@@ -83,14 +79,10 @@ internal sealed class QuickpayTemplateHelper
     public void SetCardTemplateTags(Template template)
     {
         var quickpayValues = GetCommonValues();
-        quickpayValues["receipturl"] = ReceiptUrl;
 
-        var cultures = CultureInfo.GetCultures(CultureTypes.AllCultures);
-        Dictionary<string, string> availableLanguages = AvailableLanguages.ToDictionary(
-            code => code,
-            code => cultures.FirstOrDefault(culture => culture.TwoLetterISOLanguageName.Equals(code, StringComparison.OrdinalIgnoreCase))?.DisplayName ?? string.Empty
-        );
-        quickpayValues["availableLanguages"] = GetStringValue(availableLanguages);
+        //these values are for our templates only
+        quickpayValues["receipturl"] = ReceiptUrl;
+        quickpayValues["availableLanguages"] = GetStringValue(AvailableLanguages);
         quickpayValues["availablePaymentMethods"] = GetStringValue(AvailablePaymentMethods);
 
         SetTemplateTags(template, quickpayValues);
@@ -105,47 +97,18 @@ internal sealed class QuickpayTemplateHelper
     }
 
     /// <summary>
-    /// Gets common values for both QuickPay Form and Card
+    /// Gets common values for both QuickPay Form and Card template
     /// </summary>
-    private Dictionary<string, string> GetCommonValues()
+    private Dictionary<string, string> GetCommonValues() => new()
     {
-        var values = new Dictionary<string, string>
-        {
-            ["agreement_id"] = Agreement.Trim(),
-            ["language"] = LanguageCode,
-            ["continueurl"] = ContinueUrl,
-            ["cancelurl"] = CancelUrl,
-            ["callbackurl"] = CallbackUrl,
-            ["payment_methods"] = PaymentMethods,
-            ["google_analytics_tracking_id"] = GoogleAnalyticsTracking,
-            ["google_analytics_client_id"] = GoogleAnalyticsClient
-        };
-
-        if (Branding > 0)
-            values["branding_id"] = Branding.ToString();
-
-        return values;
-    }
-
-    private string GetMacString(IDictionary<string, string> formValues)
-    {
-        var excludeList = new List<string> { "MAC" };
-        var keysSorted = formValues.Keys.ToArray();
-        Array.Sort(keysSorted, StringComparer.Ordinal);
-
-        var message = new StringBuilder();
-        foreach (string key in keysSorted)
-        {
-            if (excludeList.Contains(key))
-                continue;
-
-            if (message.Length > 0)
-                message.Append(" ");
-
-            var value = formValues[key];
-            message.Append(value);
-        }
-
-        return message.ToString();
-    }
+        ["agreement_id"] = Agreement.Trim(),
+        ["language"] = LanguageCode,
+        ["branding_id"] = Branding > 0 ? Branding.ToString() : string.Empty,
+        ["continueurl"] = ContinueUrl,
+        ["cancelurl"] = CancelUrl,
+        ["callbackurl"] = CallbackUrl,
+        ["payment_methods"] = PaymentMethods,
+        ["google_analytics_tracking_id"] = GoogleAnalyticsTracking,
+        ["google_analytics_client_id"] = GoogleAnalyticsClient
+    };
 }

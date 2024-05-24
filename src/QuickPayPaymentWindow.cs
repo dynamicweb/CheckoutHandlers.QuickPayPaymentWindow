@@ -15,6 +15,7 @@ using Dynamicweb.Security.UserManagement;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -199,6 +200,15 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         }
     }
 
+    private static Dictionary<string, string> GetSupportedLanguagesWithLabels()
+    {
+        var cultures = CultureInfo.GetCultures(CultureTypes.AllCultures);
+        return SupportedLanguages.ToDictionary(
+            code => code,
+            code => cultures.FirstOrDefault(culture => culture.TwoLetterISOLanguageName.Equals(code, StringComparison.OrdinalIgnoreCase))?.DisplayName ?? string.Empty
+        );
+    }
+
     private static string BaseUrl(Order order, bool headless = false)
     {
         bool disablePortNumber = SystemConfiguration.Instance.GetValue("/Globalsettings/System/http/DisableBaseHrefPort") == "True";
@@ -330,7 +340,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             Order = order,
             PaymentMethods = PaymentMethods,
             ReceiptUrl = receiptUrl,
-            AvailableLanguages = SupportedLanguages,
+            AvailableLanguages = GetSupportedLanguagesWithLabels(),
             AvailablePaymentMethods = GetCardTypes(false, true)
         };
     }
