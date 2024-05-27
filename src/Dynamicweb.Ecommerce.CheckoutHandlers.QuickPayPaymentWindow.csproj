@@ -26,12 +26,10 @@
 	</PropertyGroup>
 	<ItemGroup>
 	  <None Remove="Updates\Card.cshtml" />
-	  <None Remove="Updates\InlineForm.cshtml" />
 	  <None Remove="Updates\Post.cshtml" />
 	</ItemGroup>
 	<ItemGroup>
 	  <EmbeddedResource Include="Updates\Card.cshtml" />
-	  <EmbeddedResource Include="Updates\InlineForm.cshtml" />
 	  <EmbeddedResource Include="Updates\Post.cshtml" />
 	</ItemGroup>
 	<ItemGroup>
