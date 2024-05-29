@@ -675,22 +675,24 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
 
             order.GatewayResult = responseText;
             CheckedData checkedData = CheckData(order, responseText, amount);
+
+            float capturedAmount = amount / 100f;
             switch (checkedData.Result)
             {
                 case CheckDataResult.FinalCaptureSucceed:
                     {
-                        LogEvent(order, "Capture successful", DebuggingInfoType.CaptureResult);
+                        LogEvent(order, string.Format("Message=\"{0}\" Amount=\"{1:f2}\"", "Capture successful", capturedAmount), DebuggingInfoType.CaptureResult);
                         return new OrderCaptureInfo(OrderCaptureInfo.OrderCaptureState.Success, "Capture successful");
                     }
                 case CheckDataResult.SplitCaptureSucceed:
                     if (final)
                     {
-                        LogEvent(order, string.Format("Message=\"{0}\" Amount=\"{1:f2}\"", "Split capture(final)", amount / 100f), DebuggingInfoType.CaptureResult);
+                        LogEvent(order, string.Format("Message=\"{0}\" Amount=\"{1:f2}\"", "Split capture(final)", capturedAmount), DebuggingInfoType.CaptureResult);
                         return new OrderCaptureInfo(OrderCaptureInfo.OrderCaptureState.Success, "Split capture successful");
                     }
                     else
                     {
-                        LogEvent(order, string.Format("Message=\"{0}\" Amount=\"{1:f2}\"", "Split capture", amount / 100f), DebuggingInfoType.CaptureResult);
+                        LogEvent(order, string.Format("Message=\"{0}\" Amount=\"{1:f2}\"", "Split capture", capturedAmount), DebuggingInfoType.CaptureResult);
                         return new OrderCaptureInfo(OrderCaptureInfo.OrderCaptureState.Split, "Split capture successful");
                     }
                 default:
