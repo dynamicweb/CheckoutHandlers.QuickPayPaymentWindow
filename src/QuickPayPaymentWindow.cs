@@ -321,7 +321,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         catch (Exception ex)
         {
             LogError(order, ex, "Unhandled exception with message: {0}", ex.Message);
-            return PrintErrorTemplate(order, ex.Message);
+            return new ContentOutputResult() { Content = "An error occurred in the callback. Check event log for error details" };
         }
 
         QuickpayTemplateHelper GetTemplateHelper() => new()
@@ -378,7 +378,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         catch (Exception ex)
         {
             LogError(order, ex, "Unhandled exception with message: {0}", ex.Message);
-            return PrintErrorTemplate(order, ex.Message);
+            return new ContentOutputResult() { Content = "An error occurred in the callback. Check event log for error details" };
         }
     }
 
@@ -566,15 +566,21 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     {
         lock (lockObject)
         {
+            if (Context.Current.Request.InputStream.Length == 0)
+            {
+                LogEvent(order, "Invalid callback - no InputStream or not a POST");
+                return;
+            }
+
             LogEvent(order, "Callback started");
-            string callbackResponce;
+            string callbackResponse;
 
             using (StreamReader reader = new StreamReader(Context.Current.Request.InputStream, Encoding.UTF8))
             {
-                callbackResponce = reader.ReadToEndAsync().GetAwaiter().GetResult();
+                callbackResponse = reader.ReadToEndAsync().GetAwaiter().GetResult();
             }
 
-            CheckedData checkedData = CheckData(order, callbackResponce ?? string.Empty, order.Price.PricePIP);
+            CheckedData checkedData = CheckData(order, callbackResponse ?? string.Empty, order.Price.PricePIP);
             string resultInfo = checkedData.Result switch
             {
                 //ViaBill autocapture starts callback.
