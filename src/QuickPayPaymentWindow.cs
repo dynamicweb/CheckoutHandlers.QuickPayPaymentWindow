@@ -36,6 +36,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     private string cancelTemplate;
     private string errorTemplate;
     private const string orderCacheKey = "CheckoutHandler:Order.";
+    
     private const string PostTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Post";
     private const string CancelTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Cancel";
     private const string ErrorTemplateFolder = "eCom7/CheckoutHandler/QuickPayPaymentWindow/Error";
