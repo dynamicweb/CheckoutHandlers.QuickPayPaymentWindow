@@ -566,7 +566,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
     {
         lock (lockObject)
         {
-            if (Context.Current.Request.InputStream.Length == 0)
+            if (Converter.ToInt64(Context.Current.Request.Headers["Content-Length"]) == 0)
             {
                 LogEvent(order, "Invalid callback - no InputStream or not a POST");
                 return;
