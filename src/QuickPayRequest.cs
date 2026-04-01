@@ -82,14 +82,19 @@ internal sealed class QuickPayRequest
 
                         if (!response.IsSuccessStatusCode)
                         {
-                            var error = Converter.Deserialize<ServiceError>(responseText);
-                            if (error.ErrorCode > 0 || !string.IsNullOrWhiteSpace(error.Message))
+                            string errorMessage = $"QuickPay request failed with HTTP status {(int)response.StatusCode} {response.ReasonPhrase}.";
+                            try
                             {
-                                string errorMessage = error.ErrorCode > 0
-                                    ? $"Error code: {error.ErrorCode}. Message: {error.Message}."
-                                    : $"Message: {error.Message}.";
-                                throw new Exception(errorMessage);
+                                var error = Converter.Deserialize<ServiceError>(responseText);
+                                if (error?.ErrorCode > 0 || !string.IsNullOrWhiteSpace(error?.Message))
+                                {
+                                    errorMessage = error.ErrorCode > 0
+                                        ? $"Error code: {error.ErrorCode}. Message: {error.Message}."
+                                        : $"Message: {error.Message}.";
+                                }
                             }
+                            catch { }
+                            throw new Exception(errorMessage);
                         }
 
                         return responseText;
