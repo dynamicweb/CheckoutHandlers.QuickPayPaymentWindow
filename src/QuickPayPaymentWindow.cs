@@ -1084,8 +1084,8 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
         LogEvent(order, "Response validation started");
 
         var quickpayResponse = Converter.Deserialize<Dictionary<string, object>>(responseText);
-        var operations = Converter.Deserialize<Dictionary<string, object>[]>(Converter.ToString(quickpayResponse["operations"]));
-        var metadata = Converter.Deserialize<Dictionary<string, object>>(Converter.ToString(quickpayResponse["metadata"]));
+        var operations = Converter.Deserialize<Dictionary<string, object>[]>(Converter.Serialize(quickpayResponse["operations"]));
+        var metadata = Converter.Deserialize<Dictionary<string, object>>(Converter.Serialize(quickpayResponse["metadata"]));
 
         string errorMessage = "Some unhandled error is occured.";
 
@@ -1127,7 +1127,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             string fraudSuspectedKey = "fraud_suspected";
             if (metadata.ContainsKey(fraudSuspectedKey) && Converter.ToBoolean(metadata[fraudSuspectedKey]) is true)
             {
-                string[] fraudRemarks = Converter.Deserialize<string[]>(Converter.ToString(metadata["fraud_remarks"]));
+                string[] fraudRemarks = Converter.Deserialize<string[]>(Converter.Serialize(metadata["fraud_remarks"]));
                 string fraudText = string.Join(System.Environment.NewLine, fraudRemarks);
                 errorMessage = $"{errorMessage}. {fraudText}";
             }
@@ -1371,7 +1371,7 @@ public class QuickPayPaymentWindow : CheckoutHandlerWithStatusPage, IParameterOp
             {
                 paymentModel = Converter.Deserialize<Dictionary<string, object>>(responseText);
             }
-            var operations = Converter.Deserialize<Dictionary<string, object>[]>(Converter.ToString(paymentModel["operations"]));
+            var operations = Converter.Deserialize<Dictionary<string, object>[]>(Converter.Serialize(paymentModel["operations"]));
 
             Dictionary<string, object> operation;
             operation = operations.Last(o => string.IsNullOrEmpty(operationTypeLock) ||
